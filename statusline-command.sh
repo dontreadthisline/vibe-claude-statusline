@@ -25,15 +25,15 @@ ICON_EDIT=''
 ICON_CLOCK=''
 
 # ANSI Colors
-C_RESET='\033[0m'
-C_CYAN='\033[96m'
-C_GRAY='\033[90m'
-C_BLUE='\033[94m'
-C_GREEN='\033[92m'
-C_WHITE='\033[97m'
-C_YELLOW='\033[33m'
-C_MAGENTA='\033[35m'
-C_RED='\033[91m'
+C_RESET=$'\033[0m'
+C_CYAN=$'\033[96m'
+C_GRAY=$'\033[90m'
+C_BLUE=$'\033[94m'
+C_GREEN=$'\033[92m'
+C_WHITE=$'\033[97m'
+C_YELLOW=$'\033[33m'
+C_MAGENTA=$'\033[35m'
+C_RED=$'\033[91m'
 
 get_file_mtime() {
     local file="$1"
