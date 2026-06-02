@@ -4,33 +4,34 @@
 IS_MACOS=false
 [[ "$OSTYPE" == "darwin"* ]] && IS_MACOS=true
 
-# Nerd Font icons - all from same font set for consistent sizing
-ICON_CPU='󰒼'
-ICON_MEM=''
-ICON_TIME=''
-ICON_DISK='󰋊'
-ICON_DOWN=''
-ICON_UP=''
-ICON_GPU=''
-ICON_DIR=''
-ICON_TERMINAL=''
-ICON_MODEL=''
-ICON_COST=''
-ICON_EDIT=''
+# Nerd Font icons - Font Awesome only (consistent sizing)
+# All icons from FA5 range U+F0xx-U+F5xx
+ICON_CPU=''      # fa-microchip
+ICON_MEM=''      # fa-memory  
+ICON_TIME=''     # fa-clock
+ICON_DISK=''     # fa-hdd
+ICON_DOWN=''     # fa-arrow-down
+ICON_UP=''       # fa-arrow-up
+ICON_GPU=''      # fa-desktop
+ICON_DIR=''      # fa-folder-open
+ICON_TERMINAL='' # fa-terminal
+ICON_MODEL=''    # fa-cog
+ICON_COST=''     # fa-dollar
+ICON_EDIT=''     # fa-pen
 
-# Clock icons 1-12
-CLOCK_ICONS[1]='󱑅'
-CLOCK_ICONS[2]='󱑆'
-CLOCK_ICONS[3]='󱑇'
-CLOCK_ICONS[4]='󱑈'
-CLOCK_ICONS[5]='󱑉'
-CLOCK_ICONS[6]='󱑊'
-CLOCK_ICONS[7]='󱑋'
-CLOCK_ICONS[8]='󱑌'
-CLOCK_ICONS[9]='󱑍'
-CLOCK_ICONS[10]='󱑎'
-CLOCK_ICONS[11]='󱑏'
-CLOCK_ICONS[12]='󱑐'
+# Clock icons (all same - simple clock)
+CLOCK_ICONS[1]=''
+CLOCK_ICONS[2]=''
+CLOCK_ICONS[3]=''
+CLOCK_ICONS[4]=''
+CLOCK_ICONS[5]=''
+CLOCK_ICONS[6]=''
+CLOCK_ICONS[7]=''
+CLOCK_ICONS[8]=''
+CLOCK_ICONS[9]=''
+CLOCK_ICONS[10]=''
+CLOCK_ICONS[11]=''
+CLOCK_ICONS[12]=''
 
 get_clock_icon() {
     local h m total rounded dh
