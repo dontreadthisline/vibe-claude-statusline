@@ -4,7 +4,7 @@
 IS_MACOS=false
 [[ "$OSTYPE" == "darwin"* ]] && IS_MACOS=true
 
-# Nerd Font icons (literal unicode for bash 3.2+ / zsh compatibility)
+# Nerd Font icons - all from same font set for consistent sizing
 ICON_CPU='󰒼'
 ICON_MEM=''
 ICON_TIME=''
@@ -18,8 +18,7 @@ ICON_MODEL=''
 ICON_COST=''
 ICON_EDIT=''
 
-# Dynamic clock icon: MDI clock-time-X (U+F1445 ~ U+F1450)
-# Predefined icons for bash 3.2 compatibility (indexes 1-12 for hours)
+# Clock icons 1-12
 CLOCK_ICONS[1]='󱑅'
 CLOCK_ICONS[2]='󱑆'
 CLOCK_ICONS[3]='󱑇'
@@ -55,7 +54,6 @@ C_YELLOW=$'\033[33m'
 C_MAGENTA=$'\033[35m'
 C_RED=$'\033[91m'
 
-# Cross-platform stat for file modification time
 get_file_mtime() {
     local file="$1"
     if $IS_MACOS; then
@@ -65,45 +63,33 @@ get_file_mtime() {
     fi
 }
 
-# Read JSON input from stdin
 input=$(cat)
-
-# Extract data from JSON
 user=$(id -un 2>/dev/null || echo "$USER" | sed 's/ .*//')
 host=$(hostname -s)
 cwd=$(echo "$input" | jq -r '.workspace.current_dir')
 model=$(echo "$input" | jq -r '.model.display_name' | sed 's/[Dd]eep[Ss]eek/ds/')
 
-# Context usage with color-coded bar (5 blocks, each = 20%)
 used=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
 ctx_size=$(echo "$input" | jq -r '.context_window.context_window_size // empty')
 context_str=""
 if [ -n "$used" ]; then
-    if [ "$used" -le 50 ]; then
-        ctx_color="$C_GREEN"
-    elif [ "$used" -le 80 ]; then
-        ctx_color="$C_YELLOW"
-    else
-        ctx_color="$C_RED"
+    if [ "$used" -le 50 ]; then ctx_color="$C_GREEN"
+    elif [ "$used" -le 80 ]; then ctx_color="$C_YELLOW"
+    else ctx_color="$C_RED"
     fi
     blocks=$((used / 20))
     bar=""
     i=0
     while [ $i -lt 5 ]; do
-        if [ $i -lt $blocks ]; then
-            bar="${bar}█"
-        else
-            bar="${bar}░"
+        if [ $i -lt $blocks ]; then bar="${bar}█"
+        else bar="${bar}░"
         fi
         i=$((i + 1))
     done
-    # Format context window size: 200000 -> 200K, 1000000 -> 1M
     size_str=""
     if [ -n "$ctx_size" ]; then
-        if [ "$ctx_size" -ge 1000000 ]; then
-            size_str="$(awk "BEGIN {printf \"%.0fM\", $ctx_size/1000000}")"
-        else
-            size_str="$(awk "BEGIN {printf \"%.0fK\", $ctx_size/1000}")"
+        if [ "$ctx_size" -ge 1000000 ]; then size_str="$(awk "BEGIN {printf \"%.0fM\", $ctx_size/1000000}")"
+        else size_str="$(awk "BEGIN {printf \"%.0fK\", $ctx_size/1000}")"
         fi
         context_str="${ctx_color}${bar} ${used}%/${size_str}${C_RESET}"
     else
@@ -111,26 +97,21 @@ if [ -n "$used" ]; then
     fi
 fi
 
-# Session cost
 cost_str=""
 cost_usd=$(echo "$input" | jq -r '.cost.total_cost_usd // empty')
 if [ -n "$cost_usd" ] && [ "$cost_usd" != "0" ]; then
     cost_str=$(printf '%.2f' "$cost_usd")
-    # Append provider balance from cache (refresh every 5 min)
     cache_file="/tmp/claude-balance-cache"
     if [ -f "$cache_file" ]; then
         cache_age=$(( $(date +%s) - $(get_file_mtime "$cache_file") ))
         [ "$cache_age" -gt 300 ] && ~/.claude/balance-fetch.sh &
         IFS='|' read -r bal_provider bal_currency bal_total < "$cache_file"
-        if [ -n "$bal_total" ]; then
-            cost_str="${cost_str}/${bal_total}"
-        fi
+        [ -n "$bal_total" ] && cost_str="${cost_str}/${bal_total}"
     else
         ~/.claude/balance-fetch.sh &
     fi
 fi
 
-# Session duration
 duration_str=""
 duration_ms=$(echo "$input" | jq -r '.cost.total_duration_ms // empty')
 if [ -n "$duration_ms" ] && [ "$duration_ms" != "0" ]; then
@@ -142,13 +123,11 @@ if [ -n "$duration_ms" ] && [ "$duration_ms" != "0" ]; then
     duration_str="${ICON_TIME} ${dur}"
 fi
 
-# Thinking mode
 thinking_str=""
 thinking=$(echo "$input" | jq -r '.thinking.enabled // empty')
 [ "$thinking" = "true" ] && thinking_str="[think]"
 model_str="${ICON_MODEL} ${model}${thinking_str}"
 
-# Git branch + dirty flag
 git_info=""
 if git rev-parse --git-dir > /dev/null 2>&1; then
     branch=$(git branch --show-current 2>/dev/null || echo "no-branch")
@@ -156,31 +135,24 @@ if git rev-parse --git-dir > /dev/null 2>&1; then
     [ -n "$(git status --porcelain 2>/dev/null)" ] && git_info="${git_info}[!]"
 fi
 
-# Shorten home directory path
 short_cwd="${ICON_DIR} $(basename "$cwd")"
 
-# CPU usage - platform specific
 stat_cache="/tmp/statusline-cpustat"
 cpu_usage="0"
 if $IS_MACOS; then
-    # macOS: use /usr/bin/top (avoid btop alias)
     cpu_line=$(/usr/bin/top -l 1 2>/dev/null | grep -E '^CPU usage:')
     if [ -n "$cpu_line" ]; then
-        # Parse "CPU usage: 8.33% user, 15.94% sys, 75.72% idle"
         idle_pct=$(echo "$cpu_line" | awk -F', ' '{print $3}' | grep -oE '[0-9]+\.[0-9]+')
         [ -n "$idle_pct" ] && cpu_usage=$(awk "BEGIN {printf \"%.0f\", 100 - $idle_pct}")
     fi
 else
-    # Linux: use /proc/stat delta
     if [ -f "$stat_cache" ]; then
         read -r p_user p_nice p_sys p_idle p_iowait p_irq p_softirq p_steal _ < "$stat_cache"
         p_idle=$((p_idle + p_iowait))
         p_total=$((p_user + p_nice + p_sys + p_idle + p_irq + p_softirq + p_steal))
-
         read -r _ cu_user cu_nice cu_sys cu_idle cu_iowait cu_irq cu_softirq cu_steal _ < /proc/stat
         cu_idle=$((cu_idle + cu_iowait))
         cu_total=$((cu_user + cu_nice + cu_sys + cu_idle + cu_irq + cu_softirq + cu_steal))
-
         d_idle=$((cu_idle - p_idle))
         d_total=$((cu_total - p_total))
         [ "$d_total" -gt 0 ] && cpu_usage=$(awk "BEGIN {printf \"%.0f\", 100 * (1 - $d_idle / $d_total)}")
@@ -188,25 +160,17 @@ else
     awk '/^cpu / {print $2, $3, $4, $5, $6, $7, $8, $9}' /proc/stat > "$stat_cache"
 fi
 
-# CPU temperature - platform specific
 cpu_temp=""
 if $IS_MACOS; then
-    # macOS: try osx-cpu-temp if installed
     if command -v osx-cpu-temp > /dev/null 2>&1; then
         cpu_temp=$(osx-cpu-temp 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1)
         [ -n "$cpu_temp" ] && cpu_temp="${cpu_temp}°C"
     fi
 else
-    # Linux: use lm_sensors
     cpu_temp=$(sensors 2>/dev/null | awk '/Package id 0/ {print $4}' | tr -d '+')
 fi
-if [ -n "$cpu_temp" ]; then
-    cpu_str="${ICON_CPU} ${cpu_usage}%/${cpu_temp}"
-else
-    cpu_str="${ICON_CPU} ${cpu_usage}%"
-fi
+[ -n "$cpu_temp" ] && cpu_str="${ICON_CPU} ${cpu_usage}%/${cpu_temp}" || cpu_str="${ICON_CPU} ${cpu_usage}%"
 
-# GPU info (2 GPUs) - same for both platforms (nvidia-smi)
 gpu_str=""
 if command -v nvidia-smi > /dev/null 2>&1; then
     gpu_data=$(nvidia-smi --query-gpu=utilization.gpu,temperature.gpu --format=csv,noheader,nounits 2>/dev/null)
@@ -217,20 +181,15 @@ if command -v nvidia-smi > /dev/null 2>&1; then
     fi
 fi
 
-# Memory - platform specific
 mem_str=""
 if $IS_MACOS; then
-    # macOS: use vm_stat
     mem_info=$(LC_ALL=C vm_stat 2>/dev/null)
     if [ -n "$mem_info" ]; then
         page_size=4096
-        free_pages=$(echo "$mem_info" | awk '/Pages free/ {print $3}' | tr -d '.')
         active_pages=$(echo "$mem_info" | awk '/Pages active/ {print $3}' | tr -d '.')
         inactive_pages=$(echo "$mem_info" | awk '/Pages inactive/ {print $3}' | tr -d '.')
         wired_pages=$(echo "$mem_info" | awk '/Pages wired down/ {print $4}' | tr -d '.')
-        # Total used = active + inactive + wired
         used_bytes=$(( (active_pages + inactive_pages + wired_pages) * page_size ))
-        # Get total from sysctl
         total_bytes=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
         if [ "$total_bytes" -gt 0 ]; then
             used_gb=$(awk "BEGIN {printf \"%.1fG\", $used_bytes/1073741824}")
@@ -239,13 +198,11 @@ if $IS_MACOS; then
         fi
     fi
 else
-    # Linux: use free
     mem_str=$(LC_ALL=C free -h 2>/dev/null | awk '/^Mem:/ {gsub(/i/,""); printf "%s/%s", $3, $2}')
     [ -n "$mem_str" ] && mem_str="${ICON_MEM} ${mem_str}"
 fi
 [ -z "$mem_str" ] && mem_str="${ICON_MEM} ?/?"
 
-# Disk (current dir usage ; mount point total) - works on both
 disk_str=""
 if [ -d "$cwd" ]; then
     dir_usage=$(du -sh "$cwd" 2>/dev/null | awk '{print $1}')
@@ -254,11 +211,9 @@ if [ -d "$cwd" ]; then
 fi
 [ -z "$disk_str" ] && disk_str="${ICON_DISK} ?/?"
 
-# Network bandwidth - platform specific
 net_cache="/tmp/statusline-netstat"
 net_str=""
 if $IS_MACOS; then
-    # macOS: use netstat -ib
     now=$(date +%s)
     curr_rx=0; curr_tx=0
     while read -r iface _ _ _ _ _ _ _ _ _ rx _ _ _ _ _ tx _; do
@@ -279,7 +234,6 @@ if $IS_MACOS; then
     fi
     echo "$now $curr_rx $curr_tx" > "$net_cache"
 else
-    # Linux: use /proc/net/dev
     if [ -f /proc/net/dev ]; then
         now=$(date +%s%N)
         curr_rx=0; curr_tx=0
@@ -304,24 +258,18 @@ else
 fi
 [ -z "$net_str" ] && net_str="${ICON_DOWN} 0 ${ICON_UP} 0"
 
-# System time
 sys_time=$(date '+%H:%M')
 
-# Currently edited file (written by PostToolUse hook: CATEGORY|CMD|PATH)
 edit_str=""
 session_id=$(echo "$input" | jq -r '.session_id // empty')
 if [ -n "$session_id" ] && [ -f "/tmp/claude-status-edit-file-${session_id}" ]; then
     edit_age=$(( $(date +%s) - $(get_file_mtime "/tmp/claude-status-edit-file-${session_id}") ))
     if [ "$edit_age" -lt 5 ]; then
         IFS='|' read -r edit_cat edit_cmd edit_path <<< "$(cat "/tmp/claude-status-edit-file-${session_id}")"
-        # Validate category
         case "$edit_cat" in create|edit|delete) ;; *) edit_cat="";; esac
-        # Guard against literal "null" strings
         [ "$edit_cmd" = "null" ] && edit_cmd=""
         [ "$edit_path" = "null" ] && edit_path=""
-        # All three must be non-empty
         [ -z "$edit_cat" ] || [ -z "$edit_cmd" ] || [ -z "$edit_path" ] && edit_cat=""
-        # Path basename must be meaningful (not "null", not empty)
         if [ -n "$edit_cat" ]; then
             bn=$(basename "$edit_path" 2>/dev/null)
             [ -z "$bn" ] || [ "$bn" = "null" ] && edit_cat=""
@@ -337,7 +285,6 @@ if [ -n "$session_id" ] && [ -f "/tmp/claude-status-edit-file-${session_id}" ]; 
     fi
 fi
 
-# Build segments - only non-empty to avoid double-spacing
 segments=()
 segments+=("${C_CYAN}${ICON_TERMINAL}${C_RESET} ${C_GRAY}${user}@${host}${C_RESET}")
 [ -n "$short_cwd" ] && segments+=("${C_BLUE}${short_cwd}${C_RESET}")
@@ -354,7 +301,6 @@ segments+=("${C_YELLOW}$(get_clock_icon)${C_RESET} ${C_WHITE}${sys_time}${C_RESE
 [ -n "$net_str" ] && segments+=("${C_BLUE}${net_str}${C_RESET}")
 [ -n "$edit_str" ] && segments+=("${edit_str}")
 
-# Join with single space then output
 output=""
 for seg in "${segments[@]}"; do
     [ -n "$output" ] && output+=" "
