@@ -4,31 +4,44 @@
 IS_MACOS=false
 [[ "$OSTYPE" == "darwin"* ]] && IS_MACOS=true
 
-# Nerd Font icons
-ICON_CPU=$'\u{f4bc}'
-ICON_MEM=$'\u{efc5}'
-ICON_TIME=$'\UF252'
-ICON_DISK=$'\u{f02ca}'
-ICON_DOWN=$'\u{f063}'
-ICON_UP=$'\u{f062}'
-ICON_GPU=$'\u{f26c}'
-ICON_DIR=$'\u{f07c}'
-ICON_TERMINAL=$'\u{f489}'
-ICON_MODEL=$'\u{f281}'
-ICON_COST=$'\UF155'
-ICON_EDIT=$'\u{f040}'
+# Nerd Font icons (literal unicode for bash 3.2+ / zsh compatibility)
+ICON_CPU='󰒼'
+ICON_MEM=''
+ICON_TIME=''
+ICON_DISK='󰋊'
+ICON_DOWN=''
+ICON_UP=''
+ICON_GPU=''
+ICON_DIR=''
+ICON_TERMINAL=''
+ICON_MODEL=''
+ICON_COST=''
+ICON_EDIT=''
 
 # Dynamic clock icon: MDI clock-time-X (U+F1445 ~ U+F1450)
+# Predefined icons for bash 3.2 compatibility (indexes 1-12 for hours)
+CLOCK_ICONS[1]='󱑅'
+CLOCK_ICONS[2]='󱑆'
+CLOCK_ICONS[3]='󱑇'
+CLOCK_ICONS[4]='󱑈'
+CLOCK_ICONS[5]='󱑉'
+CLOCK_ICONS[6]='󱑊'
+CLOCK_ICONS[7]='󱑋'
+CLOCK_ICONS[8]='󱑌'
+CLOCK_ICONS[9]='󱑍'
+CLOCK_ICONS[10]='󱑎'
+CLOCK_ICONS[11]='󱑏'
+CLOCK_ICONS[12]='󱑐'
+
 get_clock_icon() {
-    local h m total rounded dh code
+    local h m total rounded dh
     h=$(date +%-H)
     m=$(date +%-M)
     total=$((h * 60 + m))
     rounded=$(( (total + 30) / 60 ))
     dh=$(( rounded % 12 ))
     [ "$dh" -eq 0 ] && dh=12
-    code=$((0xF1445 + dh - 1))
-    printf "\U$(printf '%08X' "$code")"
+    printf '%s' "${CLOCK_ICONS[$dh]}"
 }
 
 # ANSI colors
