@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/home/zsl/.claude/edit-hook.sh"
+            "command": "~/.claude/edit-hook.sh"
           }
         ]
       }
@@ -25,6 +25,6 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "/home/zsl/.claude/statusline-command.sh"
+    "command": "~/.claude/statusline-command.sh"
   }
 }

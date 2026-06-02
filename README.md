@@ -2,6 +2,8 @@
 
 动态状态栏，展示系统资源、会话信息、编辑指示器和提供商余额。
 
+支持 Linux 和 macOS。
+
 ## 文件
 
 | 文件 | 用途 |
@@ -14,6 +16,12 @@
 ## 安装
 
 将三个 `.sh` 文件复制到 `~/.claude/`，将 `settings-snippet.json` 中的配置合并到 `~/.claude/settings.json`。
+
+## macOS 注意事项
+
+- CPU 温度：可选安装 `osx-cpu-temp` (`brew install osx-cpu-temp`)，不安装则只显示使用率
+- GPU：需要安装 NVIDIA 驱动和 `nvidia-smi`（Mac 上较少见）
+- 图标：需要终端支持 Nerd Font
 
 ## 状态栏 Segments
 

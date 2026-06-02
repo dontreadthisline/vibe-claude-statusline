@@ -1,18 +1,22 @@
 #!/bin/bash
 
+# Platform detection
+IS_MACOS=false
+[[ "$OSTYPE" == "darwin"* ]] && IS_MACOS=true
+
 # Nerd Font icons
-ICON_CPU=$''
-ICON_MEM=$''
+ICON_CPU=$'\u{f4bc}'
+ICON_MEM=$'\u{efc5}'
 ICON_TIME=$'\UF252'
-ICON_DISK=$'󰋊'
-ICON_DOWN=$''
-ICON_UP=$''
-ICON_GPU=$''
-ICON_DIR=$''
-ICON_TERMINAL=$''
-ICON_MODEL=$''
+ICON_DISK=$'\u{f02ca}'
+ICON_DOWN=$'\u{f063}'
+ICON_UP=$'\u{f062}'
+ICON_GPU=$'\u{f26c}'
+ICON_DIR=$'\u{f07c}'
+ICON_TERMINAL=$'\u{f489}'
+ICON_MODEL=$'\u{f281}'
 ICON_COST=$'\UF155'
-ICON_EDIT=$''
+ICON_EDIT=$'\u{f040}'
 
 # Dynamic clock icon: MDI clock-time-X (U+F1445 ~ U+F1450)
 get_clock_icon() {
@@ -37,6 +41,16 @@ C_WHITE=$'\033[97m'
 C_YELLOW=$'\033[33m'
 C_MAGENTA=$'\033[35m'
 C_RED=$'\033[91m'
+
+# Cross-platform stat for file modification time
+get_file_mtime() {
+    local file="$1"
+    if $IS_MACOS; then
+        stat -f %m "$file" 2>/dev/null || echo 0
+    else
+        stat -c %Y "$file" 2>/dev/null || echo 0
+    fi
+}
 
 # Read JSON input from stdin
 input=$(cat)
@@ -92,14 +106,14 @@ if [ -n "$cost_usd" ] && [ "$cost_usd" != "0" ]; then
     # Append provider balance from cache (refresh every 5 min)
     cache_file="/tmp/claude-balance-cache"
     if [ -f "$cache_file" ]; then
-        cache_age=$(( $(date +%s) - $(stat -c %Y "$cache_file" 2>/dev/null || echo 0) ))
-        [ "$cache_age" -gt 300 ] && /home/zsl/.claude/balance-fetch.sh &
+        cache_age=$(( $(date +%s) - $(get_file_mtime "$cache_file") ))
+        [ "$cache_age" -gt 300 ] && ~/.claude/balance-fetch.sh &
         IFS='|' read -r bal_provider bal_currency bal_total < "$cache_file"
         if [ -n "$bal_total" ]; then
             cost_str="${cost_str}/${bal_total}"
         fi
     else
-        /home/zsl/.claude/balance-fetch.sh &
+        ~/.claude/balance-fetch.sh &
     fi
 fi
 
@@ -132,33 +146,54 @@ fi
 # Shorten home directory path
 short_cwd="${ICON_DIR} $(basename "$cwd")"
 
-# CPU usage (instantaneous via /proc/stat delta)
+# CPU usage - platform specific
 stat_cache="/tmp/statusline-cpustat"
 cpu_usage="0"
-if [ -f "$stat_cache" ]; then
-    read -r p_user p_nice p_sys p_idle p_iowait p_irq p_softirq p_steal _ < "$stat_cache"
-    p_idle=$((p_idle + p_iowait))
-    p_total=$((p_user + p_nice + p_sys + p_idle + p_irq + p_softirq + p_steal))
+if $IS_MACOS; then
+    # macOS: use /usr/bin/top (avoid btop alias)
+    cpu_line=$(/usr/bin/top -l 1 2>/dev/null | grep -E '^CPU usage:')
+    if [ -n "$cpu_line" ]; then
+        # Parse "CPU usage: 8.33% user, 15.94% sys, 75.72% idle"
+        idle_pct=$(echo "$cpu_line" | awk -F', ' '{print $3}' | grep -oE '[0-9]+\.[0-9]+')
+        [ -n "$idle_pct" ] && cpu_usage=$(awk "BEGIN {printf \"%.0f\", 100 - $idle_pct}")
+    fi
+else
+    # Linux: use /proc/stat delta
+    if [ -f "$stat_cache" ]; then
+        read -r p_user p_nice p_sys p_idle p_iowait p_irq p_softirq p_steal _ < "$stat_cache"
+        p_idle=$((p_idle + p_iowait))
+        p_total=$((p_user + p_nice + p_sys + p_idle + p_irq + p_softirq + p_steal))
 
-    read -r _ cu_user cu_nice cu_sys cu_idle cu_iowait cu_irq cu_softirq cu_steal _ < /proc/stat
-    cu_idle=$((cu_idle + cu_iowait))
-    cu_total=$((cu_user + cu_nice + cu_sys + cu_idle + cu_irq + cu_softirq + cu_steal))
+        read -r _ cu_user cu_nice cu_sys cu_idle cu_iowait cu_irq cu_softirq cu_steal _ < /proc/stat
+        cu_idle=$((cu_idle + cu_iowait))
+        cu_total=$((cu_user + cu_nice + cu_sys + cu_idle + cu_irq + cu_softirq + cu_steal))
 
-    d_idle=$((cu_idle - p_idle))
-    d_total=$((cu_total - p_total))
-    [ "$d_total" -gt 0 ] && cpu_usage=$(awk "BEGIN {printf \"%.0f\", 100 * (1 - $d_idle / $d_total)}")
+        d_idle=$((cu_idle - p_idle))
+        d_total=$((cu_total - p_total))
+        [ "$d_total" -gt 0 ] && cpu_usage=$(awk "BEGIN {printf \"%.0f\", 100 * (1 - $d_idle / $d_total)}")
+    fi
+    awk '/^cpu / {print $2, $3, $4, $5, $6, $7, $8, $9}' /proc/stat > "$stat_cache"
 fi
-awk '/^cpu / {print $2, $3, $4, $5, $6, $7, $8, $9}' /proc/stat > "$stat_cache"
 
-# CPU temperature
-cpu_temp=$(sensors 2>/dev/null | awk '/Package id 0/ {print $4}' | tr -d '+')
+# CPU temperature - platform specific
+cpu_temp=""
+if $IS_MACOS; then
+    # macOS: try osx-cpu-temp if installed
+    if command -v osx-cpu-temp > /dev/null 2>&1; then
+        cpu_temp=$(osx-cpu-temp 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1)
+        [ -n "$cpu_temp" ] && cpu_temp="${cpu_temp}°C"
+    fi
+else
+    # Linux: use lm_sensors
+    cpu_temp=$(sensors 2>/dev/null | awk '/Package id 0/ {print $4}' | tr -d '+')
+fi
 if [ -n "$cpu_temp" ]; then
     cpu_str="${ICON_CPU} ${cpu_usage}%/${cpu_temp}"
 else
     cpu_str="${ICON_CPU} ${cpu_usage}%"
 fi
 
-# GPU info (2 GPUs)
+# GPU info (2 GPUs) - same for both platforms (nvidia-smi)
 gpu_str=""
 if command -v nvidia-smi > /dev/null 2>&1; then
     gpu_data=$(nvidia-smi --query-gpu=utilization.gpu,temperature.gpu --format=csv,noheader,nounits 2>/dev/null)
@@ -169,11 +204,35 @@ if command -v nvidia-smi > /dev/null 2>&1; then
     fi
 fi
 
-# Memory
-mem_str=$(LC_ALL=C free -h 2>/dev/null | awk '/^Mem:/ {gsub(/i/,""); printf "%s/%s", $3, $2}')
-[ -n "$mem_str" ] && mem_str="${ICON_MEM} ${mem_str}" || mem_str="${ICON_MEM} ?/?"
+# Memory - platform specific
+mem_str=""
+if $IS_MACOS; then
+    # macOS: use vm_stat
+    mem_info=$(LC_ALL=C vm_stat 2>/dev/null)
+    if [ -n "$mem_info" ]; then
+        page_size=4096
+        free_pages=$(echo "$mem_info" | awk '/Pages free/ {print $3}' | tr -d '.')
+        active_pages=$(echo "$mem_info" | awk '/Pages active/ {print $3}' | tr -d '.')
+        inactive_pages=$(echo "$mem_info" | awk '/Pages inactive/ {print $3}' | tr -d '.')
+        wired_pages=$(echo "$mem_info" | awk '/Pages wired down/ {print $4}' | tr -d '.')
+        # Total used = active + inactive + wired
+        used_bytes=$(( (active_pages + inactive_pages + wired_pages) * page_size ))
+        # Get total from sysctl
+        total_bytes=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
+        if [ "$total_bytes" -gt 0 ]; then
+            used_gb=$(awk "BEGIN {printf \"%.1fG\", $used_bytes/1073741824}")
+            total_gb=$(awk "BEGIN {printf \"%.0fG\", $total_bytes/1073741824}")
+            mem_str="${ICON_MEM} ${used_gb}/${total_gb}"
+        fi
+    fi
+else
+    # Linux: use free
+    mem_str=$(LC_ALL=C free -h 2>/dev/null | awk '/^Mem:/ {gsub(/i/,""); printf "%s/%s", $3, $2}')
+    [ -n "$mem_str" ] && mem_str="${ICON_MEM} ${mem_str}"
+fi
+[ -z "$mem_str" ] && mem_str="${ICON_MEM} ?/?"
 
-# Disk (current dir usage ; mount point total)
+# Disk (current dir usage ; mount point total) - works on both
 disk_str=""
 if [ -d "$cwd" ]; then
     dir_usage=$(du -sh "$cwd" 2>/dev/null | awk '{print $1}')
@@ -182,20 +241,21 @@ if [ -d "$cwd" ]; then
 fi
 [ -z "$disk_str" ] && disk_str="${ICON_DISK} ?/?"
 
-# Network bandwidth (delta from /proc/net/dev)
+# Network bandwidth - platform specific
 net_cache="/tmp/statusline-netstat"
 net_str=""
-if [ -f /proc/net/dev ]; then
-    now=$(date +%s%N)
+if $IS_MACOS; then
+    # macOS: use netstat -ib
+    now=$(date +%s)
     curr_rx=0; curr_tx=0
-    while read -r iface rx_bytes _ _ _ _ _ _ _ tx_bytes _; do
-        [ "$iface" = "lo:" ] && continue
-        curr_rx=$((curr_rx + rx_bytes))
-        curr_tx=$((curr_tx + tx_bytes))
-    done < <(awk 'NR>2 {gsub(/:/,""); print $1, $2, $10}' /proc/net/dev 2>/dev/null)
+    while read -r iface _ _ _ _ _ _ _ _ _ rx _ _ _ _ _ tx _; do
+        [ "$iface" = "lo0" ] && continue
+        [ -n "$rx" ] && [ "$rx" -eq "$rx" ] 2>/dev/null && curr_rx=$((curr_rx + rx))
+        [ -n "$tx" ] && [ "$tx" -eq "$tx" ] 2>/dev/null && curr_tx=$((curr_tx + tx))
+    done < <(netstat -ib 2>/dev/null | awk 'NR>1 {print $1, $7, $10}')
     if [ -f "$net_cache" ]; then
         read -r prev_ts prev_rx prev_tx < "$net_cache"
-        dt=$(( (now - prev_ts) / 1000000000 ))
+        dt=$((now - prev_ts))
         if [ "$dt" -gt 0 ]; then
             drx=$(( (curr_rx - prev_rx) / dt ))
             dtx=$(( (curr_tx - prev_tx) / dt ))
@@ -205,6 +265,29 @@ if [ -f /proc/net/dev ]; then
         fi
     fi
     echo "$now $curr_rx $curr_tx" > "$net_cache"
+else
+    # Linux: use /proc/net/dev
+    if [ -f /proc/net/dev ]; then
+        now=$(date +%s%N)
+        curr_rx=0; curr_tx=0
+        while read -r iface rx_bytes _ _ _ _ _ _ _ tx_bytes _; do
+            [ "$iface" = "lo:" ] && continue
+            curr_rx=$((curr_rx + rx_bytes))
+            curr_tx=$((curr_tx + tx_bytes))
+        done < <(awk 'NR>2 {gsub(/:/,""); print $1, $2, $10}' /proc/net/dev 2>/dev/null)
+        if [ -f "$net_cache" ]; then
+            read -r prev_ts prev_rx prev_tx < "$net_cache"
+            dt=$(( (now - prev_ts) / 1000000000 ))
+            if [ "$dt" -gt 0 ]; then
+                drx=$(( (curr_rx - prev_rx) / dt ))
+                dtx=$(( (curr_tx - prev_tx) / dt ))
+                rx_str=$(awk "BEGIN {v=$drx; if(v>=1048576) printf \"%.1fM\",v/1048576; else if(v>=1024) printf \"%.0fK\",v/1024; else printf \"%d\",v}")
+                tx_str=$(awk "BEGIN {v=$dtx; if(v>=1048576) printf \"%.1fM\",v/1048576; else if(v>=1024) printf \"%.0fK\",v/1024; else printf \"%d\",v}")
+                net_str="${ICON_DOWN} ${rx_str} ${ICON_UP} ${tx_str}"
+            fi
+        fi
+        echo "$now $curr_rx $curr_tx" > "$net_cache"
+    fi
 fi
 [ -z "$net_str" ] && net_str="${ICON_DOWN} 0 ${ICON_UP} 0"
 
@@ -215,7 +298,7 @@ sys_time=$(date '+%H:%M')
 edit_str=""
 session_id=$(echo "$input" | jq -r '.session_id // empty')
 if [ -n "$session_id" ] && [ -f "/tmp/claude-status-edit-file-${session_id}" ]; then
-    edit_age=$(( $(date +%s) - $(stat -c %Y "/tmp/claude-status-edit-file-${session_id}" 2>/dev/null || echo 0) ))
+    edit_age=$(( $(date +%s) - $(get_file_mtime "/tmp/claude-status-edit-file-${session_id}") ))
     if [ "$edit_age" -lt 5 ]; then
         IFS='|' read -r edit_cat edit_cmd edit_path <<< "$(cat "/tmp/claude-status-edit-file-${session_id}")"
         # Validate category
