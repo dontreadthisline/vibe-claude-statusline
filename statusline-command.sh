@@ -44,7 +44,11 @@ get_file_mtime() {
 
 input=$(cat)
 user=$(id -un 2>/dev/null || echo "${USER:-user}" | cut -d' ' -f1)
-host=$(hostname -s 2>/dev/null || echo "host")
+if $IS_MACOS; then
+    host=$(scutil --get LocalHostName 2>/dev/null || hostname -s 2>/dev/null || echo "host")
+else
+    host=$(hostname -s 2>/dev/null || echo "host")
+fi
 cwd=$(echo "$input" | jq -r '.workspace.current_dir // "."')
 model=$(echo "$input" | jq -r '.model.display_name // "unknown"' | sed 's/[Dd]eep[Ss]eek/ds/')
 
