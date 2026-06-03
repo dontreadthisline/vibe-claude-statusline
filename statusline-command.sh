@@ -73,8 +73,19 @@ if [ -n "$cost_usd" ] && [ "$cost_usd" != "0" ]; then
     if [ -f "$cache_file" ]; then
         cache_age=$(( $(date +%s) - $(get_file_mtime "$cache_file") ))
         [ "$cache_age" -gt 300 ] && "${SCRIPT_DIR}/balance-fetch.sh" &
-        IFS='|' read -r _ _ bal_total < "$cache_file"; [ -n "$bal_total" ] && cost_str="${cost_str}/${bal_total}"
-    else "${SCRIPT_DIR}/balance-fetch.sh" &
+    else
+        # First run: fetch synchronously to ensure balance shows immediately
+        "${SCRIPT_DIR}/balance-fetch.sh" 2>/dev/null
+    fi
+    if [ -f "$cache_file" ]; then
+        IFS='|' read -r provider _ bal_spend bal_total < "$cache_file"
+        if [ "$provider" = "didi" ]; then
+            # didi format: didi|CNY|spend|total_budget
+            [ -n "$bal_spend" ] && [ -n "$bal_total" ] && cost_str="${bal_spend}/${bal_total}"
+        else
+            # other providers: provider|currency|total_balance
+            [ -n "$bal_total" ] && cost_str="${cost_str}/${bal_total}"
+        fi
     fi
 fi
 
