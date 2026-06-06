@@ -136,4 +136,16 @@ case "$tool_name" in
     Bash)
         extract_from_bash
         ;;
-esac > "${status_file}.tmp" && [ -s "${status_file}.tmp" ] && mv "${status_file}.tmp" "$status_file" || rm -f "${status_file}.tmp"
+esac > "${status_file}.tmp"
+
+# Only overwrite if output is a valid single-line record: CATEGORY|CMD|PATH
+if [ -s "${status_file}.tmp" ]; then
+    line_count=$(wc -l < "${status_file}.tmp")
+    if [ "$line_count" -eq 1 ] && grep -qP '^(create|edit|delete)\|[^|]+\|/' "${status_file}.tmp"; then
+        mv "${status_file}.tmp" "$status_file"
+    else
+        rm -f "${status_file}.tmp"
+    fi
+else
+    rm -f "${status_file}.tmp"
+fi
