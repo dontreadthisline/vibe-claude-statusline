@@ -33,6 +33,9 @@ ICON_COST=''
 ICON_EDIT=''
 ICON_CLOCK=''
 
+IS_MACOS=false
+[ "$(uname)" = "Darwin" ] && IS_MACOS=true
+
 # ANSI Colors
 C_RESET=$'\033[0m'
 C_CYAN=$'\033[96m'
@@ -259,7 +262,12 @@ segments=()
 [ -n "$gpu_str" ] && segments+=("${C_CYAN}${gpu_str}${C_RESET}")
 [ -n "$mem_str" ] && segments+=("${C_GRAY}${mem_str}${C_RESET}")
 [ -n "$disk_str" ] && segments+=("${C_GREEN}${disk_str}${C_RESET}")
-segments+=("${C_YELLOW}$(get_clock_icon)${C_RESET} ${C_WHITE}${sys_time}${C_RESET}")
+segments+=("${C_YELLOW}${ICON_CLOCK}${C_RESET} ${C_WHITE}${sys_time}${C_RESET}")
 [ -n "$net_str" ] && segments+=("${C_BLUE}${net_str}${C_RESET}")
 
-printf "%s" "$segments"
+output=""
+for seg in "${segments[@]}"; do
+    [ -n "$output" ] && output+=" "
+    output+="$seg"
+done
+printf "%s" "$output"
