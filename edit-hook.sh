@@ -138,3 +138,6 @@ case "$tool_name" in
         extract_from_bash
         ;;
 esac > "${status_file}.tmp" && [ -s "${status_file}.tmp" ] && mv "${status_file}.tmp" "$status_file" || rm -f "${status_file}.tmp"
+
+# Persist last edit across sessions for statusline fallback
+[ -s "$status_file" ] && cp "$status_file" "/tmp/claude-last-edit"

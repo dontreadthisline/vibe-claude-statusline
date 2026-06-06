@@ -2,9 +2,18 @@
 # Statusline for Claude Code - Cross-platform (Linux/macOS, bash/zsh)
 # Requires: Nerd Font for icons, jq for JSON parsing
 
-# Platform detection
-IS_MACOS=false
-[ "$(uname -s)" = "Darwin" ] && IS_MACOS=true
+# Nerd Font icons
+ICON_CPU=$''
+ICON_MEM=$''
+ICON_TIME=$'\UF252'
+ICON_DISK=$'󰋊'
+ICON_DOWN=$''
+ICON_UP=$''
+ICON_GPU=$''
+ICON_DIR=$''
+ICON_MODEL=$''
+ICON_COST=$'\UF155'
+ICON_EDIT=$''
 
 # Script directory (portable)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -52,7 +61,11 @@ fi
 cwd=$(echo "$input" | jq -r '.workspace.current_dir // "."')
 model=$(echo "$input" | jq -r '.model.display_name // "unknown"' | sed 's/[Dd]eep[Ss]eek/ds/')
 
-# Context Window
+# Extract data from JSON
+cwd=$(echo "$input" | jq -r '.workspace.current_dir')
+model=$(echo "$input" | jq -r '.model.display_name' | sed 's/[Dd]eep[Ss]eek/ds/')
+
+# Context usage with color-coded bar (5 blocks, each = 20%)
 used=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
 ctx_size=$(echo "$input" | jq -r '.context_window.context_window_size // empty')
 context_str=""
@@ -203,39 +216,50 @@ fi
 
 sys_time=$(date '+%H:%M')
 
-# Edit indicator
-edit_str=""; session_id=$(echo "$input" | jq -r '.session_id // empty')
-edit_file="/tmp/claude-status-edit-file-${session_id}"
-[ -n "$session_id" ] && [ -f "$edit_file" ] && {
-    edit_age=$(( $(date +%s) - $(get_file_mtime "$edit_file") ))
-    [ "$edit_age" -lt 5 ] && {
-        IFS='|' read -r edit_cat edit_cmd edit_path < "$edit_file"
-        case "$edit_cat" in create|edit|delete) ;; *) edit_cat="";; esac
-        [ "$edit_cmd" = "null" ] && edit_cmd=""; [ "$edit_path" = "null" ] && edit_path=""
-        [ -z "$edit_cat" ] || [ -z "$edit_cmd" ] || [ -z "$edit_path" ] && edit_cat=""
-        [ -n "$edit_cat" ] && { bn=$(basename "$edit_path" 2>/dev/null)
-        [ -z "$bn" ] || [ "$bn" = "null" ] && edit_cat=""
-        [ -n "$edit_cat" ] && {
-            case "$edit_cat" in create) edit_color="$C_YELLOW" ;; delete) edit_color="$C_RED" ;; *) edit_color="$C_GREEN" ;; esac
-            edit_str="${edit_color}${ICON_EDIT} (${edit_cmd}) ${bn}${C_RESET}"
-        }; }
-    }
+# Currently edited file (persistent across sessions)
+# Priority: current session temp file > persistent last-edit record
+edit_str=""
+session_id=$(echo "$input" | jq -r '.session_id // empty')
+resolve_edit_line() {
+    local source_file="$1"
+    [ -z "$source_file" ] || [ ! -f "$source_file" ] && return 1
+    local line
+    IFS='|' read -r edit_cat edit_cmd edit_path <<< "$(cat "$source_file")"
+    # Validate
+    case "$edit_cat" in create|edit|delete) ;; *) return 1 ;; esac
+    [ "$edit_cmd" = "null" ] || [ -z "$edit_cmd" ] && return 1
+    [ "$edit_path" = "null" ] || [ -z "$edit_path" ] && return 1
+    local bn
+    bn=$(basename "$edit_path" 2>/dev/null)
+    [ -z "$bn" ] || [ "$bn" = "null" ] && return 1
+    case "$edit_cat" in
+        create) edit_color="$C_YELLOW" ;;
+        delete) edit_color="$C_RED" ;;
+        *)      edit_color="$C_GREEN" ;;
+    esac
+    printf -v edit_str '%s%s (%.12s) %s%s' "$edit_color" "$ICON_EDIT" "$edit_cmd" "$bn" "$C_RESET"
+    return 0
 }
 
-# Output
-segments="${C_CYAN}${ICON_TERMINAL}${C_RESET} ${C_GRAY}${user}@${host}${C_RESET}"
-segments="${segments} ${C_BLUE}${short_cwd}${C_RESET}"
-[ -n "$git_info" ] && segments="${segments} ${C_GREEN}${git_info}${C_RESET}"
-[ -n "$model_str" ] && segments="${segments} ${C_WHITE}${model_str}${C_RESET}"
-[ -n "$context_str" ] && segments="${segments} ${context_str}"
-[ -n "$cost_str" ] && segments="${segments} ${C_MAGENTA}${ICON_COST}${cost_str}${C_RESET}"
-[ -n "$duration_str" ] && segments="${segments} ${C_CYAN}${duration_str}${C_RESET}"
-[ -n "$cpu_str" ] && segments="${segments} ${C_RED}${cpu_str}${C_RESET}"
-[ -n "$gpu_str" ] && segments="${segments} ${C_CYAN}${gpu_str}${C_RESET}"
-[ -n "$mem_str" ] && segments="${segments} ${C_GRAY}${mem_str}${C_RESET}"
-[ -n "$disk_str" ] && segments="${segments} ${C_GREEN}${disk_str}${C_RESET}"
-segments="${segments} ${C_YELLOW}${ICON_CLOCK}${C_RESET} ${C_WHITE}${sys_time}${C_RESET}"
-[ -n "$net_str" ] && segments="${segments} ${C_BLUE}${net_str}${C_RESET}"
-[ -n "$edit_str" ] && segments="${segments} ${edit_str}"
+if [ -n "$session_id" ]; then
+    resolve_edit_line "/tmp/claude-status-edit-file-${session_id}" \
+        || resolve_edit_line "/tmp/claude-last-edit"
+fi
+
+# Build segments - only non-empty to avoid double-spacing
+segments=()
+[ -n "$edit_str" ] && segments+=("${edit_str}")
+[ -n "$short_cwd" ] && segments+=("${C_BLUE}${short_cwd}${C_RESET}")
+[ -n "$git_info" ] && segments+=("${C_GREEN}${git_info}${C_RESET}")
+[ -n "$model_str" ] && segments+=("${C_WHITE}${model_str}${C_RESET}")
+[ -n "$context_str" ] && segments+=("${context_str}")
+[ -n "$cost_str" ] && segments+=("${C_MAGENTA}${ICON_COST}${cost_str}${C_RESET}")
+[ -n "$duration_str" ] && segments+=("${C_CYAN}${duration_str}${C_RESET}")
+[ -n "$cpu_str" ] && segments+=("${C_RED}${cpu_str}${C_RESET}")
+[ -n "$gpu_str" ] && segments+=("${C_CYAN}${gpu_str}${C_RESET}")
+[ -n "$mem_str" ] && segments+=("${C_GRAY}${mem_str}${C_RESET}")
+[ -n "$disk_str" ] && segments+=("${C_GREEN}${disk_str}${C_RESET}")
+segments+=("${C_YELLOW}$(get_clock_icon)${C_RESET} ${C_WHITE}${sys_time}${C_RESET}")
+[ -n "$net_str" ] && segments+=("${C_BLUE}${net_str}${C_RESET}")
 
 printf "%s" "$segments"
