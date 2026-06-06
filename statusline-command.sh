@@ -219,8 +219,8 @@ fi
 
 sys_time=$(date '+%H:%M')
 
-# Currently edited file (persistent across sessions)
-# Priority: current session temp file > persistent last-edit record
+# Currently edited file (persistent per workspace)
+# Priority: current session temp file > workspace-persistent record
 edit_str=""
 session_id=$(echo "$input" | jq -r '.session_id // empty')
 resolve_edit_line() {
@@ -228,7 +228,6 @@ resolve_edit_line() {
     [ -z "$source_file" ] || [ ! -f "$source_file" ] && return 1
     local line
     IFS='|' read -r edit_cat edit_cmd edit_path <<< "$(cat "$source_file")"
-    # Validate
     case "$edit_cat" in create|edit|delete) ;; *) return 1 ;; esac
     [ "$edit_cmd" = "null" ] || [ -z "$edit_cmd" ] && return 1
     [ "$edit_path" = "null" ] || [ -z "$edit_path" ] && return 1
@@ -244,9 +243,19 @@ resolve_edit_line() {
     return 0
 }
 
+# Workspace-keyed persistent file (isolates across different projects)
+ws_key=$(echo "$cwd" | tr '/' '_' | tr -d '\n')
+ws_edit_file="/tmp/claude-edit-${ws_key}"
+
 if [ -n "$session_id" ]; then
-    resolve_edit_line "/tmp/claude-status-edit-file-${session_id}" \
-        || resolve_edit_line "/tmp/claude-last-edit"
+    session_file="/tmp/claude-status-edit-file-${session_id}"
+    if [ -f "$session_file" ]; then
+        resolve_edit_line "$session_file"
+        # Persist to workspace file for next session
+        cp "$session_file" "$ws_edit_file" 2>/dev/null
+    else
+        resolve_edit_line "$ws_edit_file"
+    fi
 fi
 
 # Build segments - only non-empty to avoid double-spacing
