@@ -92,11 +92,11 @@ extract_from_bash() {
     fi
 
     # 4. git subcommands
-    if echo "$cmd" | grep -qP '\bgit\s+(?:add|rm|mv|restore|checkout\s+--)'; then
+    if echo "$cmd" | grep -qP '\bgit\s+(?:rm|mv|restore|checkout\s+--)'; then
         local git_sub
-        git_sub=$(echo "$cmd" | grep -oP '\bgit\s+\K(add|rm|mv|restore|checkout)' | head -1)
+        git_sub=$(echo "$cmd" | grep -oP '\bgit\s+\K(rm|mv|restore|checkout)' | head -1)
         local after_git
-        after_git=$(echo "$cmd" | sed -E 's/.*\bgit\s+(add|rm|mv|restore|checkout\s+--)[[:space:]]+//')
+        after_git=$(echo "$cmd" | sed -E 's/.*\bgit\s+(rm|mv|restore|checkout\s+--)[[:space:]]+//')
         local git_path
         git_path=$(echo "$after_git" | grep -oP '(?<!\w)(/[\w./-]+|\./[\w./-]+|\.\.[\w./-]*|~[\w./-]*)(?!\w)' | tail -1)
         if [ -n "$git_path" ]; then
@@ -104,7 +104,6 @@ extract_from_bash() {
             skip_path "$git_path" && return
             case "$git_sub" in
                 rm)  echo "delete|git ${git_sub}|${git_path}" ;;
-                add) echo "create|git ${git_sub}|${git_path}" ;;
                 *)   echo "edit|git ${git_sub}|${git_path}" ;;
             esac
             return
