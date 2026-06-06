@@ -28,9 +28,9 @@ classify_cmd() {
 }
 
 skip_path() {
-    # Filter out self-referencing status files
+    # Filter out self-referencing status files and temp artifacts
     case "$1" in
-        */tmp/claude-status-edit-file-*) return 0 ;;
+        */tmp/claude-status-edit-file-*|*/tmp/claude-edit-*|*/tmp/claude-balance-cache*|*/tmp/statusline-*) return 0 ;;
         *) return 1 ;;
     esac
 }
